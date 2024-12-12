@@ -1,6 +1,7 @@
 import os
 import argparse
-from safetensors.torch import load_file
+import shutil
+from safetensors.torch import load_file, save_file
 from diffusers import UNet2DConditionModel
 
 
@@ -19,7 +20,7 @@ def convert_unet_key(state_dict):
 
     return unet_state_dict
 
-def convert_and_save(input_webui_unet, output_diffusion_unet):
+def convert_and_save(input_webui_unet, output_diffusion_unet, fp16):
     state_dict = load_file(input_webui_unet)
 
     unet_state_dict = convert_unet_key(state_dict)
@@ -28,7 +29,14 @@ def convert_and_save(input_webui_unet, output_diffusion_unet):
 
     unet = UNet2DConditionModel.from_config("./kolors/unet/")
     unet.load_state_dict(unet_state_dict)
-    unet.save_pretrained(output_diffusion_unet)
+    if fp16:
+        state_dict = {key: value.half() for key, value in unet.state_dict().items()}
+        save_name = "diffusion_pytorch_model.fp16.safetensors"
+    else:
+        state_dict = unet.state_dict()
+        save_name = "diffusion_pytorch_model.safetensors"
+    save_file(state_dict, os.path.join(output_diffusion_unet, save_name))
+    shutil.copyfile("./kolors/unet/config.json", os.path.join(output_diffusion_unet, "config.json"))
 
 
 if __name__ == "__main__":
@@ -46,7 +54,12 @@ if __name__ == "__main__":
         help="Path for the converted diffusion model.",
     )
 
-    args = parser.parse_args()
+    parser.add_argument(
+        "--fp16",
+        action="store_true",
+        help="fp16",
+    )
 
-    convert_and_save(args.input_webui_unet, args.output_diffusion_unet)
+    args = parser.parse_args()
+    convert_and_save(args.input_webui_unet, args.output_diffusion_unet, args.fp16)
 
